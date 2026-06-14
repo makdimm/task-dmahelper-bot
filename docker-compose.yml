@@ -1,6 +1,7 @@
 services:
   bot:
-    build: .
+    build:
+      context: https://github.com/makdimm/task-dmahelper-bot.git
     container_name: task-assistant-bot
     restart: unless-stopped
     env_file:
