@@ -8,3 +8,4 @@ Telegram бот для формализации задач через GPT-4o-min
 ```bash
 docker compose up -d
 ```
+# test
