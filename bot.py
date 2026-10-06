@@ -19,10 +19,13 @@ logger = logging.getLogger(__name__)
 
 TELEGRAM_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
+# OpenAI-совместимый эндпоинт: пусто = api.openai.com, иначе шлюз (напр. DeepInfra)
+OPENAI_BASE_URL = os.environ.get("OPENAI_BASE_URL") or None
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o")
 ALLOWED_IDS = [int(x.strip()) for x in os.environ.get("ALLOWED_IDS", "").split(",") if x.strip()]
 
-# OpenAI
-ai_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+# LLM-клиент
+ai_client = AsyncOpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL)
 
 # Telegram
 bot = Bot(token=TELEGRAM_TOKEN)
@@ -45,7 +48,7 @@ IT02-08:00/8/6-{Название задачи}
 
 async def ask_gpt(question: str) -> str:
     response = await ai_client.chat.completions.create(
-        model="gpt-4o",
+        model=OPENAI_MODEL,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": question},
@@ -78,7 +81,7 @@ async def cmd_start(msg: types.Message):
         await msg.reply("⛔ Нет доступа")
         return
     await msg.reply(
-        "👋 Привет! Я Q&A ассистент на GPT-4o.\n"
+        f"👋 Привет! Я Q&A ассистент на {OPENAI_MODEL}.\n"
         "Пиши текст или отправляй голосовые сообщения — я отвечу."
     )
 
@@ -95,12 +98,19 @@ async def handle_voice(msg: types.Message):
         # Распознаём речь
         text = await transcribe_voice(msg.voice.file_id)
         logger.info("Голос распознан: %r", text[:80])
+    except Exception as e:
+        logger.exception("Transcription error")
+        await msg.reply(
+            "❌ Не получилось распознать голосовое: на текущем эндпоинте нет Whisper. "
+            "Напиши текстом."
+        )
+        return
 
-        # Отвечаем
+    try:
         result = await ask_gpt(text)
         await msg.reply(result)
     except Exception as e:
-        logger.exception("Voice processing error")
+        logger.exception("LLM API error")
         await msg.reply(f"❌ Ошибка: {e}")
 
 
@@ -120,12 +130,17 @@ async def handle_text(msg: types.Message):
         await msg.reply(result)
         logger.info("Вопрос: %r", msg.text[:80])
     except Exception as e:
-        logger.exception("OpenAI API error")
+        logger.exception("LLM API error")
         await msg.reply(f"❌ Ошибка: {e}")
 
 
 async def main():
-    logger.info("Бот запущен, ALLOWED_IDS=%s", ALLOWED_IDS)
+    logger.info(
+        "Бот запущен, модель=%s, endpoint=%s, ALLOWED_IDS=%s",
+        OPENAI_MODEL,
+        OPENAI_BASE_URL or "api.openai.com",
+        ALLOWED_IDS,
+    )
     await dp.start_polling(bot)
 
 
